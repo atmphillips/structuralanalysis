@@ -16,6 +16,5 @@ https://creativecommons.org/licenses/by-nc-sa/4.0/
 (C) Copyright 2026 Andrew Phillips 
 Email: andrew.phillips@imperial.ac.uk
 
-Introduction to Structural Analysis using Grasshopper and Python YouTube playlist:
-[![Introduction to Structural Analysis using Grasshopper and Python](https://img.youtube.com/vi/VID/0.jpg)]([https://www.youtube.com/watch?v=VID](https://www.youtube.com/playlist?list=PLaHDu7VE0uzldPv_S-YwnOT-M-NvIvqgy))
+[Introduction to Structural Analysis using Grasshopper and Python YouTube playlist](https://www.youtube.com/playlist?list=PLaHDu7VE0uzldPv_S-YwnOT-M-NvIvqgy)
 
