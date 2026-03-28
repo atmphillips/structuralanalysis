@@ -17,3 +17,5 @@ https://creativecommons.org/licenses/by-nc-sa/4.0/
 
 (C) Copyright 2026 Andrew Phillips 
 Email: andrew.phillips@imperial.ac.uk
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19269579.svg)](https://doi.org/10.5281/zenodo.19269579)
