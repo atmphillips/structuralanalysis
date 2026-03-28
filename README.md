@@ -8,7 +8,7 @@ The repository files and accompanying YouTube playlist were first developed as m
 
 As well as linear elastic analysis using the stiffness matrix (K), eigenanalysis using the geometric stiffness matrix (Kg) and the mass matrix (M), allow buckiing and natural frequency analysis to be carried out. The developed Python code and Grasshopper definitions are unitless (with the exception of density which needs to be given in consistent units).
 
-While Python scripts provided, it is not planned to provide Grasshopper definitions, as these can be developed based on the accompanying YouTube playlist or prior know-how, as the aim of the taught module is to develop an understanding of the stages to develop a structural model, and how to interpret the results that the structural analysis gives.
+While Python scripts are provided, it is not planned to provide Grasshopper definitions, as these can be developed based on the accompanying YouTube playlist or prior know-how, as the aim of the taught module is to develop an understanding of the stages to develop a structural model, and how to interpret the results that the structural analysis gives.
 
 If you find any errors please let me know.
 
