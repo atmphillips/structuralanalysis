@@ -1,0 +1,32 @@
+"""Grasshopper Script"""
+a = "Eigenanalysis using the K matrix by Andrew Phillips"
+print(a)
+
+# In Grasshopper you need to install additional Python packages using the "package icon" beside the "file save icon" in the script editor window 
+
+import ghpythonlib.components as ghc
+import ghpythonlib.treehelpers as th
+import rhinoscriptsyntax as rs
+import math as ma
+import copy as cp
+import numpy as np
+import scipy.linalg as lin
+
+# Eigenanalysis
+
+eigenvalues, eigenvectors = lin.eig(K)
+
+EigenSortID = np.argsort(eigenvalues)
+eigenvalues = eigenvalues[EigenSortID].real
+eigenvectors = eigenvectors[:,EigenSortID].real
+
+Eigenvalues = list(eigenvalues)
+
+numEigen = len(eigenvalues)
+EigenNums = np.arange(numEigen)
+
+eigenvectorstreebranches = []
+for n in EigenNums:
+    eigenvectorstreebranches.append(list(eigenvectors[:,n]))
+
+Eigenvectors = th.list_to_tree(eigenvectorstreebranches)

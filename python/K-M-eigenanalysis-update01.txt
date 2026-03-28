@@ -1,0 +1,135 @@
+"""Grasshopper Script"""
+a = "Eigenanalysis using the K and M matrices by Andrew Phillips"
+print(a)
+
+# In Grasshopper you need to install addiitonal Python packages using the "package icon" beside the "file save icon" in the script editor window 
+
+import ghpythonlib.components as ghc
+import ghpythonlib.treehelpers as th
+import rhinoscriptsyntax as rs
+import math as ma
+import numpy as np
+import scipy.linalg as lin
+import copy as cp
+
+rho = float(rho)
+A = np.array(A)
+
+# define the number of nodes and elements
+numNodes = int(numNodes)
+numElems = int(numElements)
+
+# repeating data if single values have been used
+if len(A) == 1:
+    A = np.repeat(A, numElems)
+
+# define node and element numbers noting that Python uses a half open interval
+nodeNums = np.arange(0,numNodes,dtype=int)
+elemNums = np.arange(0,numElems,dtype=int)
+
+# define the element nodes
+elemNodes = np.zeros((numElements,2),dtype=int)
+elemNodes[:,0] = np.array(ElementNodes.Branch(0))
+elemNodes[:,1] = np.array(ElementNodes.Branch(1))
+
+# define the element lengths and angles
+ElemLen = np.array(ElementLengths)
+ElemAng = np.array(ElementAngles)
+
+# define the number of global degrees of freedom (u_x, u_y, r_z)
+globalDOF = numNodes*3
+
+# define pins information
+numPins = np.arange(0,len(InternalPins),dtype=int)
+if not any(InternalPins):
+    # allowing there to be no internal pins
+    PinsInfo=np.array([-1])
+else:
+    # in the form Node
+    PinsInfo = np.zeros((len(InternalPins),1),dtype=int)
+    for n in numPins:
+        PinsInfo[n,0] = int(InternalPins[n])
+
+# setup the mass matrix
+M = np.zeros((globalDOF,globalDOF)) # stiffness (n x n) matrix
+
+# define the system geometric stiffness matrix Kg
+
+# setting up a mass matrix for each elemnt
+m = np.zeros((numElements,6,6))
+# setup a direction cosine matrix for each element
+N = np.zeros((numElements,6,6))
+# setup a transformed mass matrix for each element
+mdash = np.zeros((numElements,6,6))
+
+# constructing the stiffness matrix kdash for each elemnt
+for n in elemNums:
+    # mass matrix in the local axis system
+    # altering the mass matrix for elements connected to internal pins - ** experimental **
+    if (sum(PinsInfo==elemNodes[n,0])+sum(PinsInfo==elemNodes[n,1]))==2: # pinAB (pin-pin)
+        print('Hello, you have a pin-pin element:',str(n))
+        m[n,:,:] = rho*A[n]*ElemLen[n]/6*np.array([[[2, 0, 0, 1, 0, 0],
+        [0, 2, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 2, 0, 0],
+        [0, 1, 0, 0, 2, 0],
+        [0, 0, 0, 0, 0, 0]]])
+    elif sum(PinsInfo==elemNodes[n,0])==1: # pinA
+        print('Hello, you have a pinA element:',str(n))
+        m[n,:,:] = rho*A[n]*ElemLen[n]/840*np.array([[[280, 0, 0, 140, 0, 0],
+        [0, 198, 0, 0, 117, -33*ElemLen[n]],
+        [0, 0, 0, 0, 0, 0],
+        [140, 0, 0, 280, 0, 0],
+        [0, 117, 0, 0, 408, -72*ElemLen[n]],
+        [0, -33*ElemLen[n], 0, 0, -72*ElemLen[n], 16*ElemLen[n]**2]]])
+    elif sum(PinsInfo==elemNodes[n,1])==1: # pinB
+        print('Hello, you have a pinB element:',str(n))
+        m[n,:,:] = rho*A[n]*ElemLen[n]/840*np.array([[[280, 0, 0, 140, 0, 0],
+        [0, 408, 72*ElemLen[n], 0, 117, 0],
+        [0, 72*ElemLen[n], 16*ElemLen[n]**2, 0, 33*ElemLen[n], 0],
+        [140, 0, 0, 280, 0, 0],
+        [0, 117, 33*ElemLen[n], 0, 198, 0],
+        [0, 0, 0, 0, 0, 0]]])
+    else: # unadjusted element stiffness matrix
+        m[n,:,:] = rho*A[n]*ElemLen[n]/420*np.array([[[140, 0, 0, 70, 0, 0],
+        [0, 156, 22*ElemLen[n], 0, 54, -13*ElemLen[n]],
+        [0, 22*ElemLen[n], 4*ElemLen[n]**2, 0, 13*ElemLen[n], -3*ElemLen[n]**2],
+        [70, 0, 0, 140, 0, 0],
+        [0, 54, 13*ElemLen[n], 0, 156, -22*ElemLen[n]],
+        [0, -13*ElemLen[n], -3*ElemLen[n]**2, 0, -22*ElemLen[n], 4*ElemLen[n]**2]]])
+    # direction cosine matrices noting that Python uses a half open interval
+    N[n,:3,:3] = np.array([[[ma.cos(ElemAng[n]), ma.sin(ElemAng[n]), 0],
+     [-ma.sin(ElemAng[n]), ma.cos(ElemAng[n]), 0],
+     [0, 0, 1]]])
+    N[n,3:,3:] = N[n,0:3,0:3]
+    # stiffness matrices in the global axis system
+    mdash[n,:,:] = np.matmul(np.transpose(N[n,:,:]),np.matmul(m[n,:,:],N[n,:,:]))
+
+# constructing the system stiffness matrix
+for n in elemNums:
+    # noting that Python uses a half open interval
+    M[elemNodes[n,0]*3:elemNodes[n,0]*3+3,elemNodes[n,0]*3:elemNodes[n,0]*3+3] += mdash[n,:3,:3] # top left hand quadrant
+    M[elemNodes[n,1]*3:elemNodes[n,1]*3+3,elemNodes[n,1]*3:elemNodes[n,1]*3+3] += mdash[n,3:,3:] # bottom right hand quadrant
+    M[elemNodes[n,0]*3:elemNodes[n,0]*3+3,elemNodes[n,1]*3:elemNodes[n,1]*3+3] += mdash[n,:3,3:] # top right hand quadrant
+    M[elemNodes[n,1]*3:elemNodes[n,1]*3+3,elemNodes[n,0]*3:elemNodes[n,0]*3+3] += mdash[n,3:,:3] # bottom left hand quadrant
+
+# Eigenanalysis
+
+eigenvalues, eigenvectors = lin.eig(K,M)
+
+EigenSortID = np.argsort(eigenvalues)
+eigenvalues = eigenvalues[EigenSortID].real
+frequencies = np.sqrt(eigenvalues)/(2*ma.pi)
+eigenvectors = eigenvectors[:,EigenSortID].real
+
+Eigenvalues = list(eigenvalues)
+Frequencies = list(frequencies)
+
+numEigen = len(eigenvalues)
+EigenNums = np.arange(numEigen)
+
+eigenvectorstreebranches = []
+for n in EigenNums:
+    eigenvectorstreebranches.append(list(eigenvectors[:,n]))
+
+Eigenvectors = th.list_to_tree(eigenvectorstreebranches)

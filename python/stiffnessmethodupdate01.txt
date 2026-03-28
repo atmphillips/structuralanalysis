@@ -1,0 +1,168 @@
+"""Grasshopper Script"""
+# requirements: numpy, scipy
+a = "2D beam matrix stiffness method by Andrew Phillips"
+print(a)
+
+# In Grasshopper you need to install additional Python packages using the "package icon" beside the "file save icon" in the script editor window 
+
+import ghpythonlib.components as ghc
+import rhinoscriptsyntax as rs
+import math as ma
+import copy as cp
+import numpy as np
+import scipy.linalg as lin
+
+# Matrix stiffness method
+# by Andrew Phillips
+# 08-10-2025
+
+# define material and cross-section properties
+# E, Young's modulus (N/mm^2)
+# A, area of the cross-section (mm^2)
+# I, second moment of area of the cross-section (mm^4)
+# E = float(E)
+# A = float(A)
+# I = float(I_yy)
+E = np.array(E)
+A = np.array(A)
+I = np.array(I_yy)
+
+EA = E*A # axial stiffness
+EI = E*I # bending stiffness
+
+# define the number of nodes and elements
+numNodes = int(numNodes)
+numElems = int(numElements)
+
+# repeating data if single values have been used
+if len(EA) == 1:
+    EA = np.repeat(EA, numElems)
+if len(EI) == 1:
+    EI = np.repeat(EI, numElems)
+
+# define node and element numbers noting that Python uses a half open interval
+nodeNums = np.arange(0,numNodes,dtype=int)
+elemNums = np.arange(0,numElems,dtype=int)
+
+# define the element nodes
+elemNodes = np.zeros((numElements,2),dtype=int)
+elemNodes[:,0] = np.array(ElementNodes.Branch(0))
+elemNodes[:,1] = np.array(ElementNodes.Branch(1))
+
+# define the element lengths and angles
+ElemLen = np.array(ElementLengths)
+ElemAng = np.array(ElementAngles)
+
+# define point loads and boundary conditions
+PointLoads = np.array(list(PointLoads))
+BoundaryConditions = np.array(list(BoundaryConditions))
+
+numPointLoads = np.arange(0,len(PointLoads),dtype=int)
+# in the form Node, F_x, F_y, M_z
+PointLoadsInfo = np.zeros((len(PointLoads),4),dtype=float)
+for n in numPointLoads:
+    PointLoadsInfo[n,:]=PointLoads[n].split(',')
+
+numBCs = np.arange(0,len(BoundaryConditions),dtype=int)
+# in the form Node, U_x, U_y, R_z
+BCsInfo = np.zeros((len(BoundaryConditions),4),dtype=int)
+for n in numBCs:
+    BCsInfo[n,:]=BoundaryConditions[n].split(',')
+
+# define the number of global degrees of freedom (u_x, u_y, r_z)
+globalDOF = numNodes*3
+
+# setup the stiffness, displacement, and force matrices
+K = np.zeros((globalDOF,globalDOF)) # stiffness (n x n) matrix
+u = np.zeros((globalDOF,1)) # displacement (n x 1) matrix
+f = np.zeros((globalDOF,1)) # force (n x 1) matrix
+
+# define the system stiffness matrix K
+
+# setup a stiffness matrix for each element
+k = np.zeros((numElements,6,6))
+# setup a direction cosine matrix for each element
+N = np.zeros((numElements,6,6))
+# setup a transformed stiffness matrix for each element
+kdash = np.zeros((numElements,6,6))
+
+# constructing the stiffness matrix kdash for each elemnt
+for n in elemNums:
+    # stiffness matrices in the local axis system
+    k[n,:,:] = np.array([[[EA[n]/ElemLen[n], 0, 0, -EA[n]/ElemLen[n], 0, 0],
+     [0, 12*EI[n]/(ElemLen[n]**3), 6*EI[n]/(ElemLen[n]**2), 0, -12*EI[n]/(ElemLen[n]**3), 6*EI[n]/(ElemLen[n]**2)],
+     [0, 6*EI[n]/(ElemLen[n]**2), 4*EI[n]/ElemLen[n], 0, -6*EI[n]/(ElemLen[n]**2), 2*EI[n]/ElemLen[n]],
+     [-EA[n]/ElemLen[n], 0, 0, EA[n]/ElemLen[n], 0, 0],
+     [0, -12*EI[n]/(ElemLen[n]**3), -6*EI[n]/(ElemLen[n]**2), 0, 12*EI[n]/(ElemLen[n]**3), -6*EI[n]/(ElemLen[n]**2)],
+     [0, 6*EI[n]/(ElemLen[n]**2), 2*EI[n]/ElemLen[n], 0, -6*EI[n]/(ElemLen[n]**2), 4*EI[n]/ElemLen[n]]]])
+    # direction cosine matrices noting that Python uses a half open interval
+    N[n,:3,:3] = np.array([[[ma.cos(ElemAng[n]), ma.sin(ElemAng[n]), 0],
+     [-ma.sin(ElemAng[n]), ma.cos(ElemAng[n]), 0],
+     [0, 0, 1]]])
+    N[n,3:,3:] = N[n,0:3,0:3]
+    # stiffness matrices in the global axis system
+    kdash[n,:,:] = np.matmul(np.transpose(N[n,:,:]),np.matmul(k[n,:,:],N[n,:,:]))
+
+# constructing the system stiffness matrix
+for n in elemNums:
+    # noting that Python uses a half open interval
+    K[elemNodes[n,0]*3:elemNodes[n,0]*3+3,elemNodes[n,0]*3:elemNodes[n,0]*3+3] += kdash[n,:3,:3] # top left hand quadrant
+    K[elemNodes[n,1]*3:elemNodes[n,1]*3+3,elemNodes[n,1]*3:elemNodes[n,1]*3+3] += kdash[n,3:,3:] # bottom right hand quadrant
+    K[elemNodes[n,0]*3:elemNodes[n,0]*3+3,elemNodes[n,1]*3:elemNodes[n,1]*3+3] += kdash[n,:3,3:] # top right hand quadrant
+    K[elemNodes[n,1]*3:elemNodes[n,1]*3+3,elemNodes[n,0]*3:elemNodes[n,0]*3+3] += kdash[n,3:,:3] # bottom left hand quadrant
+
+Koriginal = cp.deepcopy(K)
+
+Kmax = np.max(K)
+Kmin = np.min(K)
+Kabsmax = max([abs(Kmin), abs(Kmax)])
+Kadjust = Kabsmax*1e6
+
+# add points loads to the force matrix
+for n in numPointLoads:
+    f[int(PointLoadsInfo[n,0]*3):int(PointLoadsInfo[n,0])*3+3,0] += np.transpose(PointLoadsInfo[n,1:])
+
+# add equivalent nodal actions
+f = f + fENA
+
+# adjust the system stiffness matrix based on the boundary conditions
+for n in numBCs:
+    BCsNode = BCsInfo[n,0]
+    NodeBCs = BCsInfo[n,1:]
+    DOF = [0, 1, 2]
+    for m in DOF:
+        if NodeBCs[m] == 1:
+            K[BCsNode*3+m,:] = 0
+            K[:,BCsNode*3+m] = 0
+            K[BCsNode*3+m,BCsNode*3+m] = Kadjust
+
+KadjustBCs = cp.deepcopy(K)
+
+# Solution
+u = lin.solve(K,f)
+f1 = np.matmul(Koriginal,u)
+# subtract equivalent nodal actions
+f1 = f1-fENA
+
+# Outputs
+
+# Node displacements
+NodeDisps = list(u[:,0])
+
+# Internal forces and moment for each element
+BeamEndForces = np.zeros((numElems,6))
+uNodes = np.reshape(u,(numNodes,3))
+uElems = np.zeros((numElems,6))
+for n in elemNums:
+    uElems[n,:3] = uNodes[elemNodes[n,0],:]
+    uElems[n,3:] = uNodes[elemNodes[n,1],:]
+    BeamEndForces[n,:] = np.matmul(np.matmul(k[n,:,:],N[n,:,:]),np.transpose(uElems[n,:]))
+    # substract equivalent nodal actions
+    BeamEndForces[n,:] += -np.matmul(N[n,:,:],np.transpose(elemENA[n,:,0]))
+
+BeamForces=list(np.ndarray.flatten(BeamEndForces))
+
+# Reactions and applied nodal forces
+Reactions=list(f1[:,0])
+
+# It can be useful to print output when editing the Python script in Grasshopper

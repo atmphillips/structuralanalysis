@@ -1,0 +1,138 @@
+"""Grasshopper Script"""
+a = "2D beam UDLs to equivalent nodal actions by Andrew Phillips"
+print(a)
+
+# In Grasshopper you need to install additional Python packages using the "package icon" beside the "file save icon" in the script editor window 
+
+# UDLs to equivalent nodal actions
+# by Andrew Phillips
+
+import ghpythonlib.components as ghc
+import rhinoscriptsyntax as rs
+import math as ma
+import copy as cp
+import numpy as np
+import scipy.linalg as lin
+
+# define the number of nodes and elements
+numNodes = int(numNodes)
+numElems = int(numElements)
+
+# define node and element numbers noting that Python uses a half open interval
+nodeNums = np.arange(0,numNodes,dtype=int)
+elemNums = np.arange(0,numElems,dtype=int)
+
+# define the element nodes
+elemNodes = np.zeros((numElements,2),dtype=int)
+elemNodes[:,0] = np.array(ElementNodes.Branch(0))
+elemNodes[:,1] = np.array(ElementNodes.Branch(1))
+
+# define the element lengths and angles
+ElemLen = np.array(ElementLengths)
+ElemAng = np.array(ElementAngles)
+
+# define local UDLs
+LocalUDLs = np.array(list(LocalUDLs))
+numLocalUDLs = np.arange(0,len(LocalUDLs),dtype=int)
+LocalUDLsInfo = np.zeros((len(LocalUDLs),3),dtype=float)
+for n in numLocalUDLs:
+    LocalUDLsInfo[n,:]=LocalUDLs[n].split(',')
+
+# define global UDLs
+GlobalUDLs = np.array(list(GlobalUDLs))
+numGlobalUDLs = np.arange(0,len(GlobalUDLs),dtype=int)
+GlobalUDLsInfo = np.zeros((len(GlobalUDLs),3),dtype=float)
+for n in numGlobalUDLs:
+    GlobalUDLsInfo[n,:]=GlobalUDLs[n].split(',')
+
+# define pins information
+numPins = np.arange(0,len(InternalPins),dtype=int)
+if not any(InternalPins):
+    # allowing there to be no internal pins
+    PinsInfo=np.array([-1])
+else:
+    # in the form Node
+    PinsInfo = np.zeros((len(InternalPins),1),dtype=int)
+    for n in numPins:
+        PinsInfo[n,0] = int(InternalPins[n])
+
+# define the number of global degrees of freedom (u_x, u_y, r_z)
+globalDOF = numNodes*3
+
+# setup the equivalent nodal actions matrix
+fENA = np.zeros((globalDOF,1))
+
+# setup a matrix of equivalent nodal actions for every element for local and global UDLs
+elemLENA = np.zeros((numElems,6,1))
+elemGENA = np.zeros((numElems,6,1))
+
+# add equivalent nodal actions to the matrix for local UDLs
+for n in numLocalUDLs:
+    m = int(LocalUDLsInfo[n,0]) # element number
+    NodeA = int(elemNodes[m,0])
+    NodeB = int(elemNodes[m,1])
+    W = LocalUDLsInfo[n,1:]
+    Wx = W[0]
+    Wy = W[1]
+    LocalENA = np.zeros((1,6))
+    if (sum(PinsInfo==elemNodes[m,0])+sum(PinsInfo==elemNodes[m,1]))==2: # pinAB (pin-pin)
+        print('Hello, you have applied a UDL to a pin-pin element!')
+        LocalENA = np.array([[Wx*ElemLen[m]/2],  [Wy*ElemLen[m]/2], [0],
+         [Wx*ElemLen[m]/2],  [Wy*ElemLen[m]/2], [0]]) 
+    elif sum(PinsInfo==elemNodes[m,0])==1: # pinA
+        LocalENA = np.array([[Wx*ElemLen[m]/2], [Wy*ElemLen[m]*3/8], [0],
+         [Wx*ElemLen[m]/2], [Wy*ElemLen[m]*5/8], [-Wy*ElemLen[m]**2/8]]) 
+    elif sum(PinsInfo==elemNodes[m,1])==1: # pinB
+        LocalENA = np.array([[Wx*ElemLen[m]/2], [Wy*ElemLen[m]*5/8], [Wy*ElemLen[m]**2/8],
+         [Wx*ElemLen[m]/2], [Wy*ElemLen[m]*3/8], [0]]) 
+    else: # unadjusted equivalent nodal actiosn matrix
+        LocalENA = np.array([[Wx*ElemLen[m]/2], [Wy*ElemLen[m]/2], [Wy*ElemLen[m]**2/12],
+         [Wx*ElemLen[m]/2], [Wy*ElemLen[m]/2], [-Wy*ElemLen[m]**2/12]]) 
+    N = np.zeros((6,6))
+    N[:3,:3] = np.array([[ma.cos(ElemAng[m]), ma.sin(ElemAng[m]), 0],
+     [-ma.sin(ElemAng[m]), ma.cos(ElemAng[m]), 0],
+     [0, 0, 1]])
+    N[3:,3:] = N[:3,:3]
+    elemLENA[m,:,:] += np.matmul(np.transpose(N),LocalENA)
+    fENA[NodeA*3:NodeA*3+3,0] += elemLENA[m,:3,0]
+    fENA[NodeB*3:NodeB*3+3,0] += elemLENA[m,3:,0]
+
+# add equivalent nodal actions to the matrix for global UDLs
+for n in numGlobalUDLs:
+    m = int(GlobalUDLsInfo[n,0]) # element number
+    NodeA = int(elemNodes[m,0])
+    NodeB = int(elemNodes[m,1])
+    # transform UDLs from global to local axis system
+    Wdash = np.transpose(GlobalUDLsInfo[n,1:])
+    Nbu = np.zeros((2,2))
+    Nbu = np.array([[ma.cos(ElemAng[m]), ma.sin(ElemAng[m])],
+     [-ma.sin(ElemAng[m]), ma.cos(ElemAng[m])]])
+    W = np.matmul(Nbu,Wdash)
+    # use UDLs in local axis system
+    Wx = W[0]
+    Wy = W[1]
+    LocalENA = np.zeros((1,6))
+    if (sum(PinsInfo==elemNodes[m,0])+sum(PinsInfo==elemNodes[m,1]))==2: # pinAB (pin-pin)
+        print('Hello, you have applied a UDL to a pin-pin element!')
+        LocalENA = np.array([[Wx*ElemLen[m]/2],  [Wy*ElemLen[m]/2], [0],
+         [Wx*ElemLen[m]/2],  [Wy*ElemLen[m]/2], [0]]) 
+    elif sum(PinsInfo==elemNodes[m,0])==1: # pinA
+        LocalENA = np.array([[Wx*ElemLen[m]/2], [Wy*ElemLen[m]*3/8], [0],
+         [Wx*ElemLen[m]/2], [Wy*ElemLen[m]*5/8], [-Wy*ElemLen[m]**2/8]]) 
+    elif sum(PinsInfo==elemNodes[m,1])==1: # pinB
+        LocalENA = np.array([[Wx*ElemLen[m]/2], [Wy*ElemLen[m]*5/8], [Wy*ElemLen[m]**2/8],
+         [Wx*ElemLen[m]/2], [Wy*ElemLen[m]*3/8], [0]]) 
+    else: # unadjusted equivalent nodal actiosn matrix
+        LocalENA = np.array([[Wx*ElemLen[m]/2], [Wy*ElemLen[m]/2], [Wy*ElemLen[m]**2/12],
+         [Wx*ElemLen[m]/2], [Wy*ElemLen[m]/2], [-Wy*ElemLen[m]**2/12]]) 
+    N = np.zeros((6,6))
+    N[:3,:3] = np.array([[ma.cos(ElemAng[m]), ma.sin(ElemAng[m]), 0],
+     [-ma.sin(ElemAng[m]), ma.cos(ElemAng[m]), 0],
+     [0, 0, 1]])
+    N[3:,3:] = N[:3,:3]
+    elemGENA[m,:,:] += np.matmul(np.transpose(N),LocalENA)
+    fENA[NodeA*3:NodeA*3+3,0] += elemGENA[m,:3,0]
+    fENA[NodeB*3:NodeB*3+3,0] += elemGENA[m,3:,0]
+
+# output element equivalent nodal actions
+elemENA = elemLENA + elemGENA
