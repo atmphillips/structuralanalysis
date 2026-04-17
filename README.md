@@ -2,6 +2,8 @@ Introduction to Structural Analysis using Grasshopper and Python
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19269579.svg)](https://doi.org/10.5281/zenodo.19269579)
 
+https://doi.org/10.5281/zenodo.19269579
+
 An introduction to structural analysis, using Grasshopper (the parametric design plugin for Rhino) to carry out pre- and post-processing and Python to implement the matrix stiffness method (equivalent to the finite element method) in 2D for Euler-Bernoulli beam elements.
 
 The repository files and accompanying YouTube playlist were first developed as material for a taught module delivered by me in the Department of Civil and Environmental Engineering at Imperial College London. The aim was to make the implementation of structural analysis transparent, without anything being hidden in a black box. This was achieve by using Grasshopper to allow quick development of parametric structural models (pre-processing), Python code embedded within a Grasshopper component to carry out the structural analysis, using the matrix stiffness method, and Grasshopper to visualise the results, and generate additional results (post-processing).
